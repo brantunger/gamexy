@@ -11,7 +11,8 @@ public final class Skill {
         CLEAVE,
         GROUND_SLAM,
         WHIRLWIND,
-        WAR_CRY
+        WAR_CRY,
+        LEAP
     }
 
     public final Type type;

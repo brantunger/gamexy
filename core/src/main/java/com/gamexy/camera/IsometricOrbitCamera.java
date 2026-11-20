@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.PerspectiveCamera;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.math.collision.Ray;
+import com.gamexy.math.AngleMath;
 
 /**
  * Third-person top-down Diablo-style camera with Alt + Mouse drag orbit/pitch,
@@ -15,12 +16,10 @@ public class IsometricOrbitCamera {
 
     private final Vector3 target = new Vector3(0f, 1.0f, 0f);
     private final Vector3 desiredTarget = new Vector3(0f, 1.0f, 0f);
-    private final Vector3 forwardXZ = new Vector3();
-    private final Vector3 rightXZ = new Vector3();
 
-    private float yawDeg = 45f;
-    private float pitchDeg = 50f;
-    private float distance = 17.5f;
+    private float yawDeg = 180f;
+    private float pitchDeg = 46f;
+    private float distance = 16.5f;
     private float orbitSensitivity = 1.0f;
 
     private static final float MIN_PITCH = 26f;
@@ -55,9 +54,18 @@ public class IsometricOrbitCamera {
     }
 
     public void resetOrientation() {
-        yawDeg = 45f;
-        pitchDeg = 50f;
-        distance = 17.5f;
+        yawDeg = 180f;
+        pitchDeg = 46f;
+        distance = 16.5f;
+    }
+
+    /**
+     * Smoothly swings the camera yaw behind the character's facing angle.
+     */
+    public void followBehind(float characterFacingDeg, float delta) {
+        float desiredYaw = characterFacingDeg + 180f;
+        float diff = AngleMath.shortestAngleDiff(yawDeg, desiredYaw);
+        yawDeg += diff * Math.min(1f, delta * 6.5f);
     }
 
     public void zoom(float amountY) {
@@ -96,28 +104,6 @@ public class IsometricOrbitCamera {
     }
 
     /**
-     * Unit horizontal forward vector on the XZ plane (direction of 'W').
-     */
-    public Vector3 getForwardXZ() {
-        forwardXZ.set(camera.direction.x, 0f, camera.direction.z);
-        if (forwardXZ.len2() < 1e-5f) {
-            forwardXZ.set(0f, 0f, -1f);
-        } else {
-            forwardXZ.nor();
-        }
-        return forwardXZ;
-    }
-
-    /**
-     * Unit horizontal right vector on the XZ plane (direction of 'D').
-     */
-    public Vector3 getRightXZ() {
-        Vector3 fwd = getForwardXZ();
-        rightXZ.set(-fwd.z, 0f, fwd.x).nor();
-        return rightXZ;
-    }
-
-    /**
      * Intersects the screen cursor ray with the Y = 0 ground plane.
      */
     public boolean screenToGround(int screenX, int screenY, Vector3 out) {
@@ -136,6 +122,13 @@ public class IsometricOrbitCamera {
 
     public float getYawDeg() {
         return yawDeg;
+    }
+
+    /**
+     * Horizontal facing angle in degrees (0 = +Z) pointing along the camera's forward look direction.
+     */
+    public float getForwardYawDeg() {
+        return (yawDeg + 180f) % 360f;
     }
 
     public float getPitchDeg() {

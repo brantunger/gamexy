@@ -6,10 +6,11 @@ A third-person, Diablo-style Action RPG built with **Java**, **libGDX**, and **g
 
 | Input | Action |
 |---|---|
-| **W / A / S / D** | Move & face Barbarian (camera-relative) |
-| **Left-Click** (click or hold) | Use the currently selected ability on the bottom toolbar |
-| **1 – 4** or **Click Toolbar Slot** | Select active ability on the bottom toolbar |
-| **Right-Click Hold & Move** (or **Alt + Drag**) | Orbit and pitch the third-person camera |
+| **W / S** | Move Barbarian forward / backward |
+| **A / D** | Turn Barbarian left / right (camera smoothly follows behind) |
+| **Left-Click** (click or hold) | Use the currently selected ability aimed at the mouse cursor |
+| **1 – 9, 0** or **Click Toolbar Slot** | Select active ability on the bottom toolbar |
+| **Right-Click Hold & Move** (or **Alt + Drag**) | Free-orbit and pitch the camera (overrides auto-follow while held) |
 | **Mouse Scroll** | Zoom camera in / out |
 | **R** | Respawn if defeated |
 | **Esc** | Pause / Resume game (Pause Menu) |
@@ -23,7 +24,7 @@ A third-person, Diablo-style Action RPG built with **Java**, **libGDX**, and **g
 
 ## Project Modules
 
-- `asset-gen/` — Procedural glTF 2.0 `.glb` generator (`./gradlew :asset-gen:generateAssets`). Outputs standalone `.glb` files into `assets/models/` that can be inspected or swapped out in Blender.
+- `tools/` — Procedural glTF 2.0 `.glb` generator (`./gradlew :tools:generateAssets`). Outputs standalone `.glb` files into `assets/models/` that can be inspected or swapped out in Blender.
 - `core/` — Game engine, Barbarian & enemy logic, combat, camera, dungeon world, and Diablo-style HUD.
 - `desktop/` — Desktop LWJGL3 launcher.
 

@@ -6,14 +6,21 @@ application {
     mainClass = 'com.gamexy.desktop.DesktopLauncher'
 }
 
+sourceSets {
+    main {
+        resources.srcDirs += [rootProject.file('assets')]
+    }
+}
+
 dependencies {
     implementation project(':core')
     implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+    implementation "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-desktop"
 }
 
-tasks.named('run') {
-    dependsOn ':asset-gen:generateAssets'
+tasks.withType(JavaExec).configureEach {
+    dependsOn ':tools:generateAssets'
     workingDir = rootProject.file('assets')
     jvmArgs += '--enable-native-access=ALL-UNNAMED'
     if (org.gradle.internal.os.OperatingSystem.current().isMacOsX()) {

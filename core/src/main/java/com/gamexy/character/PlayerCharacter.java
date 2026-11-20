@@ -1,44 +1,42 @@
 package com.gamexy.character;
 
 import com.badlogic.gdx.math.MathUtils;
-import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import net.mgsx.gltf.scene3d.scene.Scene;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
- * Runtime state and procedural animation controller for the player's character.
+ * Runtime combat state, progression, cooldowns, and resource management for the player's hero.
  */
 public class PlayerCharacter {
 
     public final CharacterClass characterClass;
     public final List<Skill> skills;
-    public final float[] cooldowns;
-
     public final Scene bodyScene;
     public final Scene weaponScene;
-
     public final Vector3 position = new Vector3(0f, 0f, 0f);
-    public float facingDeg = 0f; // 0 = +Z
-    public float radius = 0.65f;
+    public final float radius = 0.65f;
 
-    public int level = 1;
-    public int xp = 0;
-    public int xpToNextLevel = 100;
+    private final float[] cooldowns;
+    private final PlayerAnimator animator = new PlayerAnimator();
 
-    public float maxHp;
-    public float hp;
-    public float maxFury;
-    public float fury;
-    public float baseDamage;
-    public float moveSpeed;
+    private float facingDeg = 0f; // 0 = +Z
+    private int level = 1;
+    private int xp = 0;
+    private int xpToNextLevel = 100;
 
-    public int selectedSkillIndex = 0;
-    public int kills = 0;
+    private float maxHp;
+    private float hp;
+    private float maxFury;
+    private float fury;
+    private float baseDamage;
+    private float moveSpeed;
 
-    // Animation & buff timers
-    private float walkTime = 0f;
+    private int selectedSkillIndex = 0;
+    private int kills = 0;
+
     private float attackTimer = 0f;
     private float attackDuration = 0.35f;
     private Skill.Type activeAnimSkill = Skill.Type.CLEAVE;
@@ -46,11 +44,9 @@ public class PlayerCharacter {
     private float hurtFlashTimer = 0f;
     private float hpRegenDelay = 0f;
 
-    private final Matrix4 tmpMat = new Matrix4();
-
     public PlayerCharacter(CharacterClass characterClass, Scene bodyScene, Scene weaponScene) {
         this.characterClass = characterClass;
-        this.skills = SkillRegistry.getSkillsFor(characterClass);
+        this.skills = Collections.unmodifiableList(SkillRegistry.getSkillsFor(characterClass));
         this.cooldowns = new float[skills.size()];
         this.bodyScene = bodyScene;
         this.weaponScene = weaponScene;
@@ -62,11 +58,74 @@ public class PlayerCharacter {
         this.baseDamage = characterClass.baseDamage;
         this.moveSpeed = characterClass.baseMoveSpeed;
 
-        updateTransforms(0f, false);
+        animator.update(this, 0f, false);
     }
 
     public boolean isAlive() {
         return hp > 0f;
+    }
+
+    public float getFacingDeg() {
+        return facingDeg;
+    }
+
+    public void setFacingDeg(float facingDeg) {
+        this.facingDeg = facingDeg;
+    }
+
+    public void turnBy(float deltaDeg) {
+        this.facingDeg = (this.facingDeg + deltaDeg) % 360f;
+    }
+
+    public int getLevel() {
+        return level;
+    }
+
+    public int getXp() {
+        return xp;
+    }
+
+    public int getXpToNextLevel() {
+        return xpToNextLevel;
+    }
+
+    public float getHp() {
+        return hp;
+    }
+
+    public float getMaxHp() {
+        return maxHp;
+    }
+
+    public float getFury() {
+        return fury;
+    }
+
+    public float getMaxFury() {
+        return maxFury;
+    }
+
+    public float getMoveSpeed() {
+        return moveSpeed;
+    }
+
+    public int getSelectedSkillIndex() {
+        return selectedSkillIndex;
+    }
+
+    public int getKills() {
+        return kills;
+    }
+
+    public void recordKill() {
+        kills++;
+    }
+
+    public float getCooldown(int index) {
+        if (index < 0 || index >= cooldowns.length) {
+            return 0f;
+        }
+        return cooldowns[index];
     }
 
     public boolean isSkillUnlocked(int index) {
@@ -89,8 +148,7 @@ public class PlayerCharacter {
     }
 
     public boolean isSkillReady(int index) {
-        if (!isSkillUnlocked(index)) return false;
-        return cooldowns[index] <= 0f;
+        return isSkillUnlocked(index) && cooldowns[index] <= 0f;
     }
 
     public boolean hasEnoughFury(Skill skill) {
@@ -111,32 +169,61 @@ public class PlayerCharacter {
         return Math.max(0f, warCryBuffTimer);
     }
 
+    public boolean isHurtFlashing() {
+        return hurtFlashTimer > 0f;
+    }
+
+    public boolean isAttacking() {
+        return attackTimer > 0f;
+    }
+
+    public float getAttackProgress() {
+        if (attackDuration <= 1e-4f) {
+            return 1f;
+        }
+        return MathUtils.clamp(1f - (attackTimer / attackDuration), 0f, 1f);
+    }
+
+    public Skill.Type getActiveAnimSkill() {
+        return activeAnimSkill;
+    }
+
     public void triggerSkillState(int index) {
+        Skill skill = skills.get(index);
+        triggerSkillState(index, resolveAttackDuration(skill.type));
+    }
+
+    public void triggerSkillState(int index, float durationOverride) {
         Skill skill = skills.get(index);
         cooldowns[index] = skill.cooldown;
         fury = MathUtils.clamp(fury - skill.furyCost + skill.furyGain, 0f, maxFury);
 
         this.activeAnimSkill = skill.type;
-        if (skill.type == Skill.Type.CLEAVE) {
-            this.attackDuration = 0.30f;
-        } else if (skill.type == Skill.Type.GROUND_SLAM) {
-            this.attackDuration = 0.44f;
-        } else if (skill.type == Skill.Type.WHIRLWIND) {
-            this.attackDuration = 0.48f;
-        } else {
-            this.attackDuration = 0.40f;
+        this.attackDuration = Math.max(0.1f, durationOverride);
+        if (skill.type == Skill.Type.WAR_CRY) {
             this.warCryBuffTimer = 8.0f;
             this.hp = Math.min(maxHp, hp + maxHp * 0.35f);
         }
         this.attackTimer = this.attackDuration;
     }
 
+    private static float resolveAttackDuration(Skill.Type type) {
+        switch (type) {
+            case CLEAVE:      return 0.30f;
+            case GROUND_SLAM: return 0.44f;
+            case WHIRLWIND:   return 0.48f;
+            case LEAP:        return 0.46f;
+            default:          return 0.40f;
+        }
+    }
+
     public void takeDamage(float amount) {
-        if (!isAlive()) return;
+        if (!isAlive()) {
+            return;
+        }
         hp = Math.max(0f, hp - amount);
         hurtFlashTimer = 0.18f;
         hpRegenDelay = 4.0f;
-        // Barbarian gains a small amount of Fury when taking hits
         fury = Math.min(maxFury, fury + 5f);
     }
 
@@ -165,9 +252,7 @@ public class PlayerCharacter {
         position.set(0f, 0f, 0f);
         attackTimer = 0f;
         warCryBuffTimer = 0f;
-        for (int i = 0; i < cooldowns.length; i++) {
-            cooldowns[i] = 0f;
-        }
+        clearCooldowns();
     }
 
     public void resetToLevelOne() {
@@ -184,23 +269,37 @@ public class PlayerCharacter {
         kills = 0;
         position.set(0f, 0f, 0f);
         facingDeg = 0f;
-        walkTime = 0f;
         attackTimer = 0f;
         warCryBuffTimer = 0f;
         hurtFlashTimer = 0f;
         hpRegenDelay = 0f;
-        for (int i = 0; i < cooldowns.length; i++) {
-            cooldowns[i] = 0f;
-        }
-        updateTransforms(0f, false);
+        clearCooldowns();
+        animator.reset();
+        animator.update(this, 0f, false);
     }
 
     public void update(float delta, boolean isMoving) {
+        tickCooldowns(delta);
+        tickTimers(delta);
+        applyPassiveRegenAndDecay(delta);
+        animator.update(this, delta, isMoving);
+    }
+
+    private void clearCooldowns() {
+        for (int i = 0; i < cooldowns.length; i++) {
+            cooldowns[i] = 0f;
+        }
+    }
+
+    private void tickCooldowns(float delta) {
         for (int i = 0; i < cooldowns.length; i++) {
             if (cooldowns[i] > 0f) {
                 cooldowns[i] = Math.max(0f, cooldowns[i] - delta);
             }
         }
+    }
+
+    private void tickTimers(float delta) {
         if (attackTimer > 0f) {
             attackTimer = Math.max(0f, attackTimer - delta);
         }
@@ -210,88 +309,16 @@ public class PlayerCharacter {
         if (hurtFlashTimer > 0f) {
             hurtFlashTimer = Math.max(0f, hurtFlashTimer - delta);
         }
+    }
+
+    private void applyPassiveRegenAndDecay(float delta) {
         if (hpRegenDelay > 0f) {
             hpRegenDelay = Math.max(0f, hpRegenDelay - delta);
         } else if (isAlive() && hp < maxHp) {
             hp = Math.min(maxHp, hp + maxHp * 0.025f * delta);
         }
-        // Passive fury decay out of combat
         if (fury > 0f && attackTimer <= 0f) {
             fury = Math.max(0f, fury - 1.8f * delta);
         }
-
-        updateTransforms(delta, isMoving);
-    }
-
-    private void updateTransforms(float delta, boolean isMoving) {
-        if (isMoving) {
-            walkTime += delta * 11f;
-        } else {
-            walkTime = 0f;
-        }
-
-        float bobY = isMoving ? Math.abs(MathUtils.sin(walkTime)) * 0.12f : 0f;
-        float swayZ = isMoving ? MathUtils.sin(walkTime) * 4.5f : 0f;
-        float extraYaw = 0f;
-        float bodyPitch = 0f;
-
-        if (attackTimer > 0f) {
-            float p = 1f - (attackTimer / attackDuration);
-            if (activeAnimSkill == Skill.Type.WHIRLWIND) {
-                extraYaw = p * 360f;
-            } else if (activeAnimSkill == Skill.Type.GROUND_SLAM) {
-                bobY += MathUtils.sin(p * MathUtils.PI) * 0.55f;
-                bodyPitch = MathUtils.sin(p * MathUtils.PI) * 18f;
-            } else if (activeAnimSkill == Skill.Type.CLEAVE) {
-                extraYaw = MathUtils.lerp(-42f, 52f, p);
-            } else if (activeAnimSkill == Skill.Type.WAR_CRY) {
-                bobY += MathUtils.sin(p * MathUtils.PI) * 0.25f;
-                bodyPitch = -12f * MathUtils.sin(p * MathUtils.PI);
-            }
-        }
-
-        // Body transform
-        bodyScene.modelInstance.transform.idt()
-            .translate(position.x, position.y + bobY, position.z)
-            .rotate(Vector3.Y, facingDeg + extraYaw)
-            .rotate(Vector3.X, bodyPitch)
-            .rotate(Vector3.Z, swayZ);
-
-        // Weapon transform attached to Barbarian's right hand
-        tmpMat.set(bodyScene.modelInstance.transform);
-        if (attackTimer > 0f) {
-            float p = 1f - (attackTimer / attackDuration);
-            if (activeAnimSkill == Skill.Type.CLEAVE) {
-                float sweepYaw = MathUtils.lerp(-80f, 85f, p);
-                tmpMat.translate(0.55f, 1.15f, 0.42f)
-                    .rotate(Vector3.Y, sweepYaw)
-                    .rotate(Vector3.X, 78f);
-            } else if (activeAnimSkill == Skill.Type.GROUND_SLAM) {
-                float slamPitch = p < 0.4f
-                    ? MathUtils.lerp(20f, -65f, p / 0.4f)
-                    : MathUtils.lerp(-65f, 125f, (p - 0.4f) / 0.6f);
-                tmpMat.translate(0.45f, 1.35f, 0.35f)
-                    .rotate(Vector3.X, slamPitch);
-            } else if (activeAnimSkill == Skill.Type.WHIRLWIND) {
-                tmpMat.translate(0.65f, 1.20f, 0.25f)
-                    .rotate(Vector3.Z, -85f)
-                    .rotate(Vector3.X, 80f);
-            } else {
-                tmpMat.translate(0.60f, 1.55f, 0.25f)
-                    .rotate(Vector3.Z, -20f);
-            }
-        } else {
-            // Ready combat stance
-            float idleSway = MathUtils.sin(walkTime * 0.8f) * 5f;
-            tmpMat.translate(0.58f, 1.08f, 0.38f)
-                .rotate(Vector3.X, 34f + idleSway)
-                .rotate(Vector3.Z, -14f);
-        }
-
-        weaponScene.modelInstance.transform.set(tmpMat);
-    }
-
-    public boolean isHurtFlashing() {
-        return hurtFlashTimer > 0f;
     }
 }
