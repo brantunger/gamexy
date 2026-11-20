@@ -1,17 +1,24 @@
 package com.gamexy.character;
 
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector3;
+import com.gamexy.targeting.Targetable;
 import net.mgsx.gltf.scene3d.scene.Scene;
 
 /**
- * Enemy entity with simple ARPG melee AI (Idle, Chase, Windup, Attack, Stunned, Dead).
+ * Enemy entity holding combat stats, damage/knockback state, and {@link Targetable} metadata.
+ * Delegates AI decisions to {@link EnemyAiController} and 3D transforms to {@link EnemyAnimator}.
  */
-public class Enemy {
+public class Enemy implements Targetable {
+
+    private static final Color COLOR_HOSTILE = new Color(0.94f, 0.20f, 0.18f, 1f);
+    private static final Color COLOR_NEUTRAL = new Color(0.96f, 0.82f, 0.24f, 1f);
+    private static final Color COLOR_STUNNED = new Color(0.35f, 0.85f, 1.0f, 1f);
 
     public enum Type {
-        SKELETON("Skeleton Warrior", 70f, 11f, 3.6f, 2.0f, 0.58f, 35),
-        BRUTE("Demonic Brute", 175f, 24f, 2.8f, 2.6f, 0.92f, 95);
+        SKELETON("Skeleton Warrior", 70f, 11f, 3.6f, 2.0f, 0.58f, 35, false, 0f),
+        BRUTE("Demonic Brute", 175f, 24f, 2.8f, 2.6f, 0.92f, 95, true, 10.5f);
 
         public final String displayName;
         public final float maxHp;
@@ -20,9 +27,12 @@ public class Enemy {
         public final float attackRange;
         public final float radius;
         public final int xpReward;
+        public final boolean aggressiveOnSight;
+        public final float aggroRange;
 
         Type(String displayName, float maxHp, float damage, float moveSpeed,
-             float attackRange, float radius, int xpReward) {
+             float attackRange, float radius, int xpReward,
+             boolean aggressiveOnSight, float aggroRange) {
             this.displayName = displayName;
             this.maxHp = maxHp;
             this.damage = damage;
@@ -30,6 +40,8 @@ public class Enemy {
             this.attackRange = attackRange;
             this.radius = radius;
             this.xpReward = xpReward;
+            this.aggressiveOnSight = aggressiveOnSight;
+            this.aggroRange = aggroRange;
         }
     }
 
@@ -47,26 +59,68 @@ public class Enemy {
     public final Vector3 position = new Vector3();
     public final Vector3 knockbackVel = new Vector3();
 
-    public float hp;
-    public float maxHp;
-    public float facingDeg = 0f;
-    public State state = State.IDLE;
+    private final EnemyAiController aiController;
+    private final EnemyAnimator animator = new EnemyAnimator();
 
-    private float stateTimer = 0f;
+    private final float maxHp;
+    private float hp;
+    private float facingDeg;
+    private State state = State.IDLE;
+
+    private boolean provoked = false;
     private float hitFlashTimer = 0f;
     private float deathTimer = 0f;
-    private float walkTime = 0f;
-    private boolean pendingAttackHit = false;
 
     public Enemy(Type type, Scene scene, float x, float z, int playerLevel) {
         this.type = type;
         this.scene = scene;
         this.position.set(x, 0f, z);
+        this.aiController = new EnemyAiController(x, z);
         float scale = 1f + (playerLevel - 1) * 0.18f;
         this.maxHp = Math.round(type.maxHp * scale);
         this.hp = this.maxHp;
         this.facingDeg = MathUtils.random(0f, 360f);
-        updateTransform();
+        animator.applyTransform(this, false, 0f);
+    }
+
+    public float getHp() {
+        return hp;
+    }
+
+    public float getFacingDeg() {
+        return facingDeg;
+    }
+
+    public void setFacingDeg(float facingDeg) {
+        this.facingDeg = facingDeg;
+    }
+
+    public State getState() {
+        return state;
+    }
+
+    public void setState(State state) {
+        this.state = state;
+    }
+
+    public float getDeathTimer() {
+        return deathTimer;
+    }
+
+    public boolean isProvoked() {
+        return provoked;
+    }
+
+    public void provoke() {
+        this.provoked = true;
+    }
+
+    public void clearProvoked() {
+        this.provoked = false;
+    }
+
+    public boolean isHostile() {
+        return type.aggressiveOnSight || provoked;
     }
 
     public boolean isAlive() {
@@ -89,155 +143,131 @@ public class Enemy {
         return type.damage;
     }
 
+    @Override
+    public Category getTargetCategory() {
+        return Category.ENEMY;
+    }
+
+    @Override
+    public String getDisplayName() {
+        return type.displayName;
+    }
+
+    @Override
+    public String getSubtitle() {
+        if (isStunned()) {
+            return "STUNNED";
+        }
+        return isHostile() ? "Hostile Enemy" : "Neutral Enemy";
+    }
+
+    @Override
+    public Vector3 getWorldPosition() {
+        return position;
+    }
+
+    @Override
+    public float getSelectionRadius() {
+        return type.radius + 0.26f;
+    }
+
+    @Override
+    public float getSelectionHeight() {
+        return (type == Type.BRUTE) ? 2.75f : 2.15f;
+    }
+
+    @Override
+    public boolean isTargetable() {
+        return isAlive();
+    }
+
+    @Override
+    public boolean hasHealthBar() {
+        return true;
+    }
+
+    @Override
+    public float getCurrentHp() {
+        return hp;
+    }
+
+    @Override
+    public float getMaxHp() {
+        return maxHp;
+    }
+
+    @Override
+    public Color getTargetAccentColor() {
+        if (isStunned()) {
+            return COLOR_STUNNED;
+        }
+        return isHostile() ? COLOR_HOSTILE : COLOR_NEUTRAL;
+    }
+
     /**
      * Applies damage, knockback, and optional stun. Returns true if this hit killed the enemy.
      */
     public boolean takeDamage(float amount, Vector3 fromPos, float knockbackStrength, float stunDuration) {
-        if (!isAlive()) return false;
+        if (!isAlive()) {
+            return false;
+        }
 
         hp = Math.max(0f, hp - amount);
         hitFlashTimer = 0.16f;
-
-        // Knockback away from attacker
-        float dx = position.x - fromPos.x;
-        float dz = position.z - fromPos.z;
-        float len = (float) Math.sqrt(dx * dx + dz * dz);
-        if (len > 1e-4f && knockbackStrength > 0f) {
-            float resistance = (type == Type.BRUTE) ? 0.55f : 1.0f;
-            knockbackVel.set((dx / len) * knockbackStrength * resistance, 0f, (dz / len) * knockbackStrength * resistance);
-        }
+        applyKnockback(fromPos, knockbackStrength);
 
         if (hp <= 0f) {
             state = State.DEAD;
             deathTimer = 0f;
-            pendingAttackHit = false;
+            aiController.onKilled();
             return true;
         }
 
-        if (stunDuration > 0f) {
-            state = State.STUNNED;
-            stateTimer = Math.max(stateTimer, stunDuration);
-            pendingAttackHit = false;
-        }
+        aiController.onDamageTaken(this, stunDuration);
         return false;
     }
 
+    private void applyKnockback(Vector3 fromPos, float knockbackStrength) {
+        if (knockbackStrength <= 0f) {
+            return;
+        }
+        float dx = position.x - fromPos.x;
+        float dz = position.z - fromPos.z;
+        float len = (float) Math.sqrt(dx * dx + dz * dz);
+        if (len > 1e-4f) {
+            float resistance = (type == Type.BRUTE) ? 0.55f : 1.0f;
+            float impulse = knockbackStrength * resistance;
+            knockbackVel.set((dx / len) * impulse, 0f, (dz / len) * impulse);
+        }
+    }
+
     /**
-     * Updates AI and returns true on the exact frame the enemy lands a melee hit on the player.
+     * Updates timers, knockback, AI, and animation. Returns true on the exact frame a melee hit lands.
      */
     public boolean update(float delta, PlayerCharacter player, CollisionResolver resolver) {
         if (hitFlashTimer > 0f) {
             hitFlashTimer = Math.max(0f, hitFlashTimer - delta);
         }
 
-        // Apply knockback
+        applyKnockbackDecay(delta, resolver);
+
+        if (state == State.DEAD) {
+            deathTimer += delta;
+            animator.applyTransform(this, false, aiController.getStateTimer());
+            return false;
+        }
+
+        boolean landedHit = aiController.update(this, delta, player, resolver, animator);
+        animator.applyTransform(this, aiController.isWandering(), aiController.getStateTimer());
+        return landedHit;
+    }
+
+    private void applyKnockbackDecay(float delta, CollisionResolver resolver) {
         if (knockbackVel.len2() > 0.01f) {
             position.mulAdd(knockbackVel, delta);
             knockbackVel.scl(Math.max(0f, 1f - delta * 8f));
             resolver.resolve(position, type.radius);
         }
-
-        if (state == State.DEAD) {
-            deathTimer += delta;
-            updateTransform();
-            return false;
-        }
-
-        boolean landedHit = false;
-        float dx = player.position.x - position.x;
-        float dz = player.position.z - position.z;
-        float dist = (float) Math.sqrt(dx * dx + dz * dz);
-
-        if (!player.isAlive()) {
-            state = State.IDLE;
-            updateTransform();
-            return false;
-        }
-
-        switch (state) {
-            case STUNNED:
-                stateTimer -= delta;
-                if (stateTimer <= 0f) {
-                    state = State.CHASE;
-                }
-                break;
-
-            case IDLE:
-                if (dist < 14.5f) {
-                    state = State.CHASE;
-                }
-                break;
-
-            case CHASE:
-                facingDeg = MathUtils.atan2(dx, dz) * MathUtils.radiansToDegrees;
-                if (dist <= type.attackRange) {
-                    state = State.WINDUP;
-                    stateTimer = (type == Type.BRUTE) ? 0.58f : 0.42f;
-                    pendingAttackHit = true;
-                } else {
-                    float step = type.moveSpeed * delta;
-                    position.x += (dx / dist) * step;
-                    position.z += (dz / dist) * step;
-                    resolver.resolve(position, type.radius);
-                    walkTime += delta * 9.5f;
-                }
-                break;
-
-            case WINDUP:
-                facingDeg = MathUtils.atan2(dx, dz) * MathUtils.radiansToDegrees;
-                stateTimer -= delta;
-                if (stateTimer <= 0f) {
-                    if (pendingAttackHit && dist <= type.attackRange + 0.75f) {
-                        landedHit = true;
-                    }
-                    pendingAttackHit = false;
-                    state = State.RECOVER;
-                    stateTimer = (type == Type.BRUTE) ? 0.75f : 0.55f;
-                }
-                break;
-
-            case RECOVER:
-                stateTimer -= delta;
-                if (stateTimer <= 0f) {
-                    state = State.CHASE;
-                }
-                break;
-
-            default:
-                break;
-        }
-
-        updateTransform();
-        return landedHit;
-    }
-
-    private void updateTransform() {
-        float bobY = 0f;
-        float pitch = 0f;
-        float scale = 1f;
-
-        if (state == State.CHASE) {
-            bobY = Math.abs(MathUtils.sin(walkTime)) * 0.09f;
-        } else if (state == State.WINDUP) {
-            pitch = -20f;
-        } else if (state == State.RECOVER) {
-            pitch = 16f;
-        } else if (state == State.STUNNED) {
-            pitch = MathUtils.sin(stateTimer * 28f) * 8f;
-        } else if (state == State.DEAD) {
-            float p = Math.min(1f, deathTimer / 0.4f);
-            pitch = -90f * p;
-            bobY = 0.25f * p;
-            if (deathTimer > 0.7f) {
-                scale = Math.max(0.01f, 1f - (deathTimer - 0.7f) / 0.4f);
-            }
-        }
-
-        scene.modelInstance.transform.idt()
-            .translate(position.x, position.y + bobY, position.z)
-            .rotate(Vector3.Y, facingDeg)
-            .rotate(Vector3.X, pitch)
-            .scale(scale, scale, scale);
     }
 
     public interface CollisionResolver {

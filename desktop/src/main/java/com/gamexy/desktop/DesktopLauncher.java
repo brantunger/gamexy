@@ -9,7 +9,7 @@ public class DesktopLauncher {
     public static void main(String[] args) {
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
         config.setTitle("gamexy — Action RPG");
-        config.setWindowedMode(1280, 720);
+        config.setFullscreenMode(Lwjgl3ApplicationConfiguration.getDisplayMode());
         config.useVsync(true);
         config.setForegroundFPS(60);
         config.setBackBufferConfig(8, 8, 8, 8, 24, 0, 4);

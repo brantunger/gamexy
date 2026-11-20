@@ -6,7 +6,7 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Registry of class skills. Barbarian starts at Level 1 with Cleave and Ground Slam,
+ * Registry of class skills. Barbarian starts at Level 1 with Cleave, Leap, and Ground Slam,
  * and unlocks Whirlwind at Level 2 and War Cry at Level 3.
  */
 public final class SkillRegistry {
@@ -31,6 +31,22 @@ public final class SkillRegistry {
                     2.6f,
                     0.0f,
                     new Color(0.88f, 0.34f, 0.18f, 1f)
+                ),
+                new Skill(
+                    Skill.Type.LEAP,
+                    "Leap",
+                    "LEAP",
+                    "Leaps to the selected enemy and slams the ground on landing. Generates +20 Fury.",
+                    1,
+                    0f,
+                    20f,
+                    5.0f,
+                    3.2f,
+                    360f,
+                    1.25f,
+                    4.2f,
+                    0.5f,
+                    new Color(0.30f, 0.68f, 0.90f, 1f)
                 ),
                 new Skill(
                     Skill.Type.GROUND_SLAM,
