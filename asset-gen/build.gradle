@@ -1,0 +1,15 @@
+plugins {
+    id 'application'
+}
+
+application {
+    mainClass = 'com.gamexy.assetgen.GenerateAssetsMain'
+}
+
+tasks.register('generateAssets', JavaExec) {
+    group = 'assets'
+    description = 'Generates standalone .glb 3D model files into assets/models/'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.gamexy.assetgen.GenerateAssetsMain'
+    args = [rootProject.file('assets/models').absolutePath]
+}

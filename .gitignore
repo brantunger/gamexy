@@ -1,0 +1,58 @@
+# Gradle
+.gradle/
+build/
+**/build/
+.gradletasknamecache
+gradle-app.setting
+local.properties
+
+# Java / JVM
+*.class
+*.log
+*.ctxt
+hs_err_pid*
+replay_pid*
+
+# Package files (preserve Gradle wrapper jar)
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+!gradle/wrapper/gradle-wrapper.jar
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse
+.classpath
+.project
+.settings/
+.metadata/
+bin/
+
+# VS Code
+.vscode/
+
+# Blender / 3D editor backups
+*.blend1
+*.blend2
+
+# OS metadata
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Temporary / editor swap files
+*.tmp
+*.bak
+*.swp
+*~
